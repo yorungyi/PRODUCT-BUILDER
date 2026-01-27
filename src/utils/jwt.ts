@@ -8,7 +8,10 @@ export interface JWTPayload {
   exp: number
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'northpalm-cc-secret-key-change-in-production'
+// Cloudflare Workers 환경에서는 process.env 사용 불가
+// 프로덕션에서는 wrangler.jsonc의 vars 또는 secrets 사용
+const JWT_SECRET = 'northpalm-cc-secret-key-2026-change-in-production-env'
+const JWT_ALGORITHM = 'HS256' // HMAC SHA-256
 
 /**
  * JWT 토큰 생성
@@ -20,7 +23,7 @@ export async function generateToken(userId: number, username: string, role: stri
     role,
     exp: Math.floor(Date.now() / 1000) + (60 * 60 * 24 * 7) // 7일 유효
   }
-  return await sign(payload, JWT_SECRET)
+  return await sign(payload, JWT_SECRET, JWT_ALGORITHM)
 }
 
 /**
@@ -28,9 +31,10 @@ export async function generateToken(userId: number, username: string, role: stri
  */
 export async function verifyToken(token: string): Promise<JWTPayload | null> {
   try {
-    const payload = await verify(token, JWT_SECRET) as JWTPayload
+    const payload = await verify(token, JWT_SECRET, JWT_ALGORITHM) as JWTPayload
     return payload
   } catch (error) {
+    console.error('[JWT] 토큰 검증 실패:', error)
     return null
   }
 }

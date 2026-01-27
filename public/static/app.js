@@ -49,18 +49,40 @@ async function apiCall(endpoint, options = {}) {
     headers['Authorization'] = `Bearer ${authToken}`
   }
   
-  const response = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers
-  })
-  
-  const data = await response.json()
-  
-  if (!response.ok) {
-    throw new Error(data.error || data.message || '오류가 발생했습니다.')
+  try {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      ...options,
+      headers
+    })
+    
+    const data = await response.json()
+    
+    // 401 에러 시 자동 로그아웃
+    if (response.status === 401) {
+      console.error('인증 실패:', data.error)
+      // 로그인 페이지가 아닌 경우에만 자동 로그아웃
+      if (!endpoint.includes('/auth/login')) {
+        showAlert('세션이 만료되었습니다. 다시 로그인해주세요.', 'error')
+        setTimeout(() => {
+          authToken = null
+          currentUser = null
+          localStorage.removeItem('authToken')
+          localStorage.removeItem('currentUser')
+          showLoginPage()
+        }, 1500)
+      }
+      throw new Error(data.error || data.message || '인증에 실패했습니다.')
+    }
+    
+    if (!response.ok) {
+      throw new Error(data.error || data.message || '오류가 발생했습니다.')
+    }
+    
+    return data
+  } catch (error) {
+    if (error.message) throw error
+    throw new Error('네트워크 오류가 발생했습니다.')
   }
-  
-  return data
 }
 
 // ===== 인증 관련 =====
