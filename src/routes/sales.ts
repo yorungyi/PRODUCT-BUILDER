@@ -234,6 +234,9 @@ sales.delete('/:id', async (c) => {
       return c.json(errorResponse('마감된 매출은 삭제할 수 없습니다.'), 403)
     }
     
+    // 관련된 마감 이력 먼저 삭제 (외래키 제약 조건)
+    await c.env.DB.prepare('DELETE FROM closing_history WHERE daily_sales_id = ?').bind(id).run()
+    
     // 매출 삭제
     await c.env.DB.prepare('DELETE FROM daily_sales WHERE id = ?').bind(id).run()
     
