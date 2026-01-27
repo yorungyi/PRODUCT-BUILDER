@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
 
 -- 기본 관리자 계정 (비밀번호: admin1234)
 INSERT OR IGNORE INTO users (username, password, name, role) VALUES 
-  ('admin', '$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', '관리자', 'admin');
+  ('admin', '$2b$10$DqVwxezxwyb1Db8k/hSdrusWQRjPGCqxK9TQDrM6tUeND/6takdri', '관리자', 'admin');
 
 -- 2. 점포 구분 테이블
 CREATE TABLE IF NOT EXISTS stores (
