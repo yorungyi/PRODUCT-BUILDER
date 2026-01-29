@@ -352,18 +352,26 @@ async function checkAuth() {
   const user = localStorage.getItem('currentUser')
   const lastActiveTime = localStorage.getItem('lastActiveTime')
   
-  // 웹 창을 닫았다가 다시 열었을 때: 무조건 로그아웃 (관리자 포함)
-  if (lastActiveTime) {
-    // lastActiveTime이 존재하면 이전에 창을 닫았다는 의미
-    showAlert('보안을 위해 다시 로그인해주세요.', 'info')
-    authToken = null
-    currentUser = null
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('currentUser')
-    localStorage.removeItem('lastActiveTime')
-    showLoginPage()
-    return
+  // 웹 창을 닫았다가 다시 열었을 때 체크
+  if (lastActiveTime && token && user) {
+    const timeSinceLastActive = Date.now() - parseInt(lastActiveTime)
+    
+    // 5초 이상 지났으면 창을 닫았다가 다시 연 것으로 간주
+    // (새로고침은 1초 이내이므로 제외)
+    if (timeSinceLastActive > 5000) {
+      showAlert('보안을 위해 다시 로그인해주세요.', 'info')
+      authToken = null
+      currentUser = null
+      localStorage.removeItem('authToken')
+      localStorage.removeItem('currentUser')
+      localStorage.removeItem('lastActiveTime')
+      showLoginPage()
+      return
+    }
   }
+  
+  // lastActiveTime 초기화 (다음 체크를 위해)
+  localStorage.removeItem('lastActiveTime')
   
   if (token && user) {
     authToken = token
