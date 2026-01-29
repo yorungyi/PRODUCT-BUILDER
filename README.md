@@ -7,6 +7,7 @@
 
 ## 🔗 접속 정보
 - **개발 서버**: https://3000-irg0n80vhudz17xtp5hir-a402f90a.sandbox.novita.ai
+- **GitHub Repository**: https://github.com/yorungyi/PRODUCT-BUILDER
 - **API 엔드포인트**: `/api/*`
 - **헬스체크**: `/api/health`
 
