@@ -184,15 +184,28 @@ app.get('/', (c) => {
                 </div>
 
                 <div class="bg-white p-6 rounded-lg shadow mb-6">
-                    <h2 class="text-lg font-bold text-gray-800 mb-4">
-                        <i class="fas fa-calendar-alt mr-2"></i>기간별 조회
-                    </h2>
-                    <div class="flex space-x-4">
-                        <input type="date" id="dashStartDate" class="px-4 py-2 border rounded-lg">
-                        <input type="date" id="dashEndDate" class="px-4 py-2 border rounded-lg">
-                        <button id="dashSearchBtn" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                            <i class="fas fa-search mr-2"></i>조회
-                        </button>
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <h2 class="text-lg font-bold text-gray-800 mb-4">
+                                <i class="fas fa-calendar-alt mr-2"></i>기간별 조회
+                            </h2>
+                            <div class="flex space-x-4">
+                                <input type="date" id="dashStartDate" class="px-4 py-2 border rounded-lg">
+                                <input type="date" id="dashEndDate" class="px-4 py-2 border rounded-lg">
+                                <button id="dashSearchBtn" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                    <i class="fas fa-search mr-2"></i>조회
+                                </button>
+                            </div>
+                        </div>
+                        <!-- 당월 총매출 표시 -->
+                        <div class="text-right">
+                            <p class="text-sm text-gray-600 mb-1">당월 총매출</p>
+                            <p id="monthlyTotalAmount" class="text-3xl font-bold text-blue-600">0원</p>
+                            <p class="text-xs text-gray-500 mt-1">
+                                순매출 <span id="monthlyNetAmount" class="font-semibold">0원</span> + 
+                                부가세 <span id="monthlyVatAmount" class="font-semibold">0원</span>
+                            </p>
+                        </div>
                     </div>
                 </div>
 
@@ -202,7 +215,7 @@ app.get('/', (c) => {
                         <canvas id="storeChart"></canvas>
                     </div>
                     <div class="bg-white p-6 rounded-lg shadow">
-                        <h3 class="text-lg font-bold text-gray-800 mb-4">최근 7일 매출 추이</h3>
+                        <h3 class="text-lg font-bold text-gray-800 mb-4">당월 일별 매출 누적 (점포별)</h3>
                         <canvas id="trendChart"></canvas>
                     </div>
                 </div>
@@ -311,6 +324,19 @@ app.get('/', (c) => {
                                 <p class="text-sm text-gray-600 mt-1">
                                     순매출 <span id="dailyNetAmount" class="font-semibold">0원</span> + 
                                     부가세 <span id="dailyVatAmount" class="font-semibold">0원</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 당월 총매출 표시 -->
+                    <div id="monthlyTotalBox" class="mb-4 p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200 hidden">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-bold text-gray-700">당월 총매출</h3>
+                            <div class="text-right">
+                                <p class="text-3xl font-bold text-green-600" id="listMonthlyTotalAmount">0원</p>
+                                <p class="text-sm text-gray-600 mt-1">
+                                    순매출 <span id="listMonthlyNetAmount" class="font-semibold">0원</span> + 
+                                    부가세 <span id="listMonthlyVatAmount" class="font-semibold">0원</span>
                                 </p>
                             </div>
                         </div>

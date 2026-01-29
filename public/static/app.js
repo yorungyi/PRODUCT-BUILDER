@@ -197,11 +197,27 @@ async function loadDashboard() {
     document.getElementById('eastShadeTotal').textContent = formatCurrency(storeTotals['east_shade'] || 0)
     document.getElementById('westShadeTotal').textContent = formatCurrency(storeTotals['west_shade'] || 0)
     
+    // 당월 총매출 계산 및 표시
+    const now = new Date()
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const monthStart = `${currentMonth}-01`
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0]
+    
+    const monthlyResult = await apiCall(`/sales?startDate=${monthStart}&endDate=${monthEnd}`)
+    const monthlySales = monthlyResult.data
+    const monthlyTotal = monthlySales.reduce((sum, sale) => sum + (sale.amount || 0), 0)
+    const monthlyNet = Math.round(monthlyTotal / 1.1)
+    const monthlyVat = monthlyTotal - monthlyNet
+    
+    document.getElementById('monthlyTotalAmount').textContent = formatCurrency(monthlyTotal)
+    document.getElementById('monthlyNetAmount').textContent = formatCurrency(monthlyNet)
+    document.getElementById('monthlyVatAmount').textContent = formatCurrency(monthlyVat)
+    
     // 점포별 매출 비중 차트
     updateStoreChart(data.storeTotal)
     
-    // 일별 추이 차트
-    updateTrendChart(data.dailyTrend)
+    // 당월 일별 누적 차트 (점포별)
+    await updateMonthlyTrendChart(monthStart, monthEnd)
     
   } catch (error) {
     showAlert('대시보드 데이터를 불러올 수 없습니다.', 'error')
@@ -301,6 +317,95 @@ function updateTrendChart(trendData) {
   })
 }
 
+// 당월 일별 매출 누적 차트 (점포별 세로 막대)
+async function updateMonthlyTrendChart(startDate, endDate) {
+  const ctx = document.getElementById('trendChart')
+  
+  if (trendChart) {
+    trendChart.destroy()
+  }
+  
+  // 당월 매출 데이터 조회
+  const result = await apiCall(`/sales?startDate=${startDate}&endDate=${endDate}`)
+  const sales = result.data
+  
+  // 점포별 일별 데이터 구조화
+  const storeMap = {
+    'clubhouse': { name: '클럽하우스', color: '#3B82F6' },
+    'starthouse': { name: '스타트하우스', color: '#10B981' },
+    'east_shade': { name: '동그늘집', color: '#F59E0B' },
+    'west_shade': { name: '서그늘집', color: '#8B5CF6' }
+  }
+  
+  // 날짜별로 그룹화
+  const dateMap = {}
+  sales.forEach(sale => {
+    const date = sale.sale_date
+    if (!dateMap[date]) {
+      dateMap[date] = {
+        'clubhouse': 0,
+        'starthouse': 0,
+        'east_shade': 0,
+        'west_shade': 0
+      }
+    }
+    dateMap[date][sale.store_code] = sale.amount || 0
+  })
+  
+  // 날짜 정렬
+  const dates = Object.keys(dateMap).sort()
+  const labels = dates.map(d => {
+    const date = new Date(d)
+    return `${date.getMonth() + 1}/${date.getDate()}`
+  })
+  
+  // 점포별 데이터셋 생성
+  const datasets = Object.keys(storeMap).map(code => ({
+    label: storeMap[code].name,
+    data: dates.map(date => dateMap[date][code]),
+    backgroundColor: storeMap[code].color,
+    borderColor: storeMap[code].color,
+    borderWidth: 1
+  }))
+  
+  trendChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: datasets
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          position: 'bottom'
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return context.dataset.label + ': ' + formatCurrency(context.parsed.y)
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          stacked: false
+        },
+        y: {
+          stacked: false,
+          beginAtZero: true,
+          ticks: {
+            callback: function(value) {
+              return (value / 10000) + '만원'
+            }
+          }
+        }
+      }
+    }
+  })
+}
+
 // ===== 매출 등록 =====
 async function registerSales(saleDate, storeId, amount, memo, weather) {
   showLoading()
@@ -355,6 +460,7 @@ async function loadSalesList() {
     if (sales.length === 0) {
       tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">매출 내역이 없습니다.</td></tr>'
       document.getElementById('dailyTotalBox').classList.add('hidden')
+      document.getElementById('monthlyTotalBox').classList.add('hidden')
       return
     }
     
@@ -370,6 +476,22 @@ async function loadSalesList() {
       document.getElementById('dailyTotalBox').classList.remove('hidden')
     } else {
       document.getElementById('dailyTotalBox').classList.add('hidden')
+    }
+    
+    // 당월 총매출 계산 (시작일이 이번 달 1일인 경우)
+    const now = new Date()
+    const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+    if (startDate === currentMonthStart || (!startDate && !endDate)) {
+      const totalAmount = sales.reduce((sum, sale) => sum + (sale.amount || 0), 0)
+      const netAmount = Math.round(totalAmount / 1.1)
+      const vatAmount = totalAmount - netAmount
+      
+      document.getElementById('listMonthlyTotalAmount').textContent = formatCurrency(totalAmount)
+      document.getElementById('listMonthlyNetAmount').textContent = formatCurrency(netAmount)
+      document.getElementById('listMonthlyVatAmount').textContent = formatCurrency(vatAmount)
+      document.getElementById('monthlyTotalBox').classList.remove('hidden')
+    } else {
+      document.getElementById('monthlyTotalBox').classList.add('hidden')
     }
     
     sales.forEach(sale => {
