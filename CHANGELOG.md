@@ -1,5 +1,109 @@
 # 변경 이력 (Changelog)
 
+## v2.3.0 (2026-01-29)
+
+### 🆕 보안 강화: 15분 비활성 자동 로그아웃
+
+#### 1. 자동 로그아웃 기능 ⭐
+- **15분간 활동 없을 시** → 자동 로그아웃
+- **웹 창을 나갔다가 15분 후 재접속 시** → 자동 로그아웃
+- **보안 향상**: 방치된 세션 자동 종료로 무단 접근 방지
+
+#### 2. 백엔드 API 추가
+```typescript
+POST /api/auth/heartbeat
+- 세션 활동 시간 업데이트
+- 1분마다 프론트엔드에서 자동 호출
+- 15분 비활성 체크 및 세션 삭제
+
+GET /api/auth/session-check
+- 페이지 로드 시 세션 유효성 체크
+- 15분 비활성 체크
+- 세션 만료 시 자동 로그아웃
+```
+
+#### 3. 데이터베이스 마이그레이션
+```sql
+-- migrations/0004_add_session_updated_at.sql
+ALTER TABLE sessions ADD COLUMN updated_at DATETIME;
+CREATE INDEX idx_sessions_updated_at ON sessions(updated_at);
+CREATE INDEX idx_active_sessions_last_activity ON active_sessions(last_activity);
+```
+
+#### 4. 프론트엔드 자동 로그아웃 로직
+**활동 감지:**
+- 마우스 클릭/이동
+- 키보드 입력
+- 스크롤
+- 터치 이벤트
+
+**타이머 시스템:**
+- **Heartbeat 타이머**: 1분마다 서버에 활동 상태 전송
+- **비활성 타이머**: 15분 후 자동 로그아웃
+- **활동 시 리셋**: 사용자 활동 감지 시 타이머 자동 초기화
+
+**페이지 가시성 관리:**
+- 탭 전환/창 최소화 감지 (`visibilitychange`)
+- 페이지 언로드 감지 (`beforeunload`)
+- 마지막 활동 시간 localStorage에 저장
+- 재접속 시 15분 체크
+
+#### 5. 자동 로그아웃 플로우
+```
+1. 로그인 성공
+   ↓
+2. 자동 로그아웃 타이머 시작
+   - Heartbeat: 1분마다
+   - 비활성 체크: 15분
+   ↓
+3. 사용자 활동 감지
+   ↓
+4. 타이머 리셋 + 서버 업데이트
+   ↓
+5-A. 15분 비활성 → 자동 로그아웃
+5-B. 창 닫기 → 마지막 시간 저장
+     ↓
+     15분 후 재접속 → 자동 로그아웃
+```
+
+### ✅ 테스트 결과
+```bash
+✅ 로그인 성공 - 토큰 발급
+✅ Heartbeat API - 활동 상태 업데이트
+✅ Session Check API - 세션 유효성 확인
+✅ 로그아웃 후 세션 만료 - 재접속 불가
+✅ 15분 비활성 체크 - 서버/클라이언트 양쪽 작동
+```
+
+### 🔧 기술 변경사항
+**백엔드:**
+- `src/routes/auth.ts` - heartbeat, session-check API 추가
+- `migrations/0004_add_session_updated_at.sql` - 세션 활동시간 추적
+
+**프론트엔드:**
+- `public/static/app.js` - 자동 로그아웃 로직 추가
+  - `sendHeartbeat()` - 서버에 활동 상태 전송
+  - `resetInactivityTimer()` - 비활성 타이머 리셋
+  - `startAutoLogoutTimers()` - 타이머 시작
+  - `stopAutoLogoutTimers()` - 타이머 중지
+  - `handleVisibilityChange()` - 페이지 가시성 변경 처리
+  - `handleBeforeUnload()` - 페이지 언로드 처리
+
+### 📋 사용 방법
+**로그인 후 자동 작동:**
+1. 로그인 → 자동으로 타이머 시작
+2. 활동 시 → 타이머 자동 리셋
+3. 15분 비활성 → 자동 로그아웃 + 알림
+4. 창 닫기 → 마지막 시간 저장
+5. 15분 후 재접속 → 자동 로그아웃
+
+**주의사항:**
+- 관리자(admin)는 동시 접속 제한 없음
+- 직원 계정만 동시 접속 차단 + 자동 로그아웃 적용
+- 15분은 서버/클라이언트 양쪽에서 체크
+
+---
+
 ## v2.2.0 (2026-01-29)
 
 ### 🆕 핵심 기능 추가

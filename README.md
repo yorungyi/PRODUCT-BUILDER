@@ -68,6 +68,11 @@
 
 7. **보안 및 동시 접속 제어**
    - JWT 토큰 인증
+   - **15분 비활성 자동 로그아웃** ⭐ (신규)
+     - 15분간 활동 없을 시 자동 로그아웃
+     - 웹 창을 나갔다가 15분 후 재접속 시 자동 로그아웃
+     - 1분마다 서버에 활동 상태 전송 (heartbeat)
+     - 마우스/키보드 활동 시 타이머 자동 리셋
    - **동시 로그인 차단** (한 직원당 1개 세션만 허용, 기존 세션 자동 종료)
    - 비밀번호 bcrypt 암호화
    - 비밀번호 변경 기능 (현재 비밀번호 확인)
@@ -88,6 +93,8 @@
 - `POST /api/auth/logout` - 로그아웃
 - `GET /api/auth/me` - 현재 사용자 정보
 - `POST /api/auth/change-password` - 비밀번호 변경
+- `POST /api/auth/heartbeat` - 세션 활동 시간 업데이트 ⭐ (신규)
+- `GET /api/auth/session-check` - 세션 유효성 체크 ⭐ (신규)
 
 #### 점포 API
 - `GET /api/stores` - 점포 목록 조회
@@ -115,7 +122,7 @@
 2. **stores** - 점포 정보 (4개 점포)
 3. **daily_sales** - 일매출 데이터 (**weather 필드 포함**)
 4. **closing_history** - 마감 이력 (감사 추적)
-5. **sessions** - 세션 관리 (JWT 토큰)
+5. **sessions** - 세션 관리 (JWT 토큰, **updated_at 활동시간 추적** ⭐)
 6. **active_sessions** - 활성 세션 추적 (동시 로그인 차단)
 
 ### 점포 구분
