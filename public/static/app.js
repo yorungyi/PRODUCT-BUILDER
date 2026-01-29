@@ -6,6 +6,12 @@ let stores = []
 let storeChart = null
 let trendChart = null
 
+// 자동 로그아웃 관련 변수
+let heartbeatInterval = null // heartbeat 타이머
+let activityTimeout = null // 비활성 타이머
+const INACTIVITY_TIMEOUT = 15 * 60 * 1000 // 15분 (밀리초)
+const HEARTBEAT_INTERVAL = 60 * 1000 // 1분마다 heartbeat (밀리초)
+
 // ===== 유틸리티 함수 =====
 function showLoading() {
   document.getElementById('loading').classList.remove('hidden')
@@ -115,23 +121,206 @@ async function logout() {
   } catch (error) {
     console.error('Logout error:', error)
   } finally {
+    stopAutoLogoutTimers() // 타이머 중지
     authToken = null
     currentUser = null
     localStorage.removeItem('authToken')
     localStorage.removeItem('currentUser')
+    localStorage.removeItem('lastActiveTime')
     showLoginPage()
     hideLoading()
   }
 }
 
-function checkAuth() {
+// ===== 자동 로그아웃 관련 함수 =====
+
+/**
+ * 세션 활동 시간 업데이트 (heartbeat)
+ * 1분마다 서버에 활동 상태를 알림
+ */
+async function sendHeartbeat() {
+  if (!authToken) return
+  
+  try {
+    await apiCall('/auth/heartbeat', {
+      method: 'POST'
+    })
+  } catch (error) {
+    console.error('Heartbeat failed:', error)
+    // heartbeat 실패 시 자동 로그아웃
+    if (error.message.includes('만료') || error.message.includes('비활성')) {
+      handleAutoLogout('15분 이상 비활성으로 자동 로그아웃되었습니다.')
+    }
+  }
+}
+
+/**
+ * 사용자 활동 감지 시 호출
+ * 타이머를 리셋하고 서버에 활동 업데이트
+ */
+function resetInactivityTimer() {
+  // 기존 타이머 제거
+  if (activityTimeout) {
+    clearTimeout(activityTimeout)
+  }
+  
+  // 새 타이머 설정 (15분)
+  activityTimeout = setTimeout(() => {
+    handleAutoLogout('15분 이상 비활성으로 자동 로그아웃됩니다.')
+  }, INACTIVITY_TIMEOUT)
+  
+  // 서버에 활동 업데이트 (throttle - 1분에 한 번만)
+  if (authToken && !window.lastHeartbeatTime) {
+    sendHeartbeat()
+    window.lastHeartbeatTime = Date.now()
+    setTimeout(() => {
+      window.lastHeartbeatTime = null
+    }, 60000) // 1분 후 다시 전송 가능
+  }
+}
+
+/**
+ * 자동 로그아웃 처리
+ */
+function handleAutoLogout(message) {
+  stopAutoLogoutTimers()
+  showAlert(message, 'error')
+  
+  setTimeout(() => {
+    authToken = null
+    currentUser = null
+    localStorage.removeItem('authToken')
+    localStorage.removeItem('currentUser')
+    showLoginPage()
+  }, 2000)
+}
+
+/**
+ * 자동 로그아웃 타이머 시작
+ */
+function startAutoLogoutTimers() {
+  // 기존 타이머 정리
+  stopAutoLogoutTimers()
+  
+  // 1. Heartbeat 타이머 (1분마다)
+  heartbeatInterval = setInterval(() => {
+    sendHeartbeat()
+  }, HEARTBEAT_INTERVAL)
+  
+  // 2. 비활성 타이머 (15분)
+  resetInactivityTimer()
+  
+  // 3. 사용자 활동 이벤트 리스너 등록
+  const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click']
+  activityEvents.forEach(event => {
+    document.addEventListener(event, resetInactivityTimer, { passive: true })
+  })
+  
+  // 4. 페이지 가시성 변경 감지 (탭 전환, 창 최소화 등)
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  
+  // 5. 페이지 언로드 감지 (창 닫기, 새로고침 등)
+  window.addEventListener('beforeunload', handleBeforeUnload)
+}
+
+/**
+ * 자동 로그아웃 타이머 중지
+ */
+function stopAutoLogoutTimers() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval)
+    heartbeatInterval = null
+  }
+  
+  if (activityTimeout) {
+    clearTimeout(activityTimeout)
+    activityTimeout = null
+  }
+  
+  // 이벤트 리스너 제거
+  const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click']
+  activityEvents.forEach(event => {
+    document.removeEventListener(event, resetInactivityTimer)
+  })
+  
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+}
+
+/**
+ * 페이지 가시성 변경 처리
+ * 탭을 나갔다 돌아올 때 세션 체크
+ */
+async function handleVisibilityChange() {
+  if (document.visibilityState === 'visible' && authToken) {
+    // 탭으로 돌아왔을 때 세션 체크
+    try {
+      const result = await apiCall('/auth/session-check')
+      if (result.success) {
+        resetInactivityTimer()
+      }
+    } catch (error) {
+      console.error('Session check failed:', error)
+      handleAutoLogout('세션이 만료되었습니다.')
+    }
+  } else if (document.visibilityState === 'hidden') {
+    // 탭을 나갈 때 세션 저장 시간 기록
+    localStorage.setItem('lastActiveTime', Date.now().toString())
+  }
+}
+
+/**
+ * 페이지 언로드 처리 (창 닫기, 새로고침)
+ */
+function handleBeforeUnload() {
+  // 마지막 활동 시간 저장
+  localStorage.setItem('lastActiveTime', Date.now().toString())
+}
+
+async function checkAuth() {
   const token = localStorage.getItem('authToken')
   const user = localStorage.getItem('currentUser')
+  const lastActiveTime = localStorage.getItem('lastActiveTime')
   
   if (token && user) {
     authToken = token
     currentUser = JSON.parse(user)
-    showMainApp()
+    
+    // 마지막 활동 시간 체크 (웹 창을 닫았다 다시 열었을 때)
+    if (lastActiveTime) {
+      const timeSinceLastActive = Date.now() - parseInt(lastActiveTime)
+      
+      // 15분(900,000ms) 이상 지났으면 자동 로그아웃
+      if (timeSinceLastActive > INACTIVITY_TIMEOUT) {
+        showAlert('15분 이상 비활성으로 자동 로그아웃되었습니다.', 'error')
+        authToken = null
+        currentUser = null
+        localStorage.removeItem('authToken')
+        localStorage.removeItem('currentUser')
+        localStorage.removeItem('lastActiveTime')
+        showLoginPage()
+        return
+      }
+    }
+    
+    // 서버 세션 체크
+    try {
+      const result = await apiCall('/auth/session-check')
+      if (result.success) {
+        showMainApp()
+      } else {
+        throw new Error('세션이 만료되었습니다.')
+      }
+    } catch (error) {
+      console.error('Session check failed:', error)
+      showAlert('세션이 만료되었습니다. 다시 로그인해주세요.', 'error')
+      authToken = null
+      currentUser = null
+      localStorage.removeItem('authToken')
+      localStorage.removeItem('currentUser')
+      localStorage.removeItem('lastActiveTime')
+      showLoginPage()
+    }
   } else {
     showLoginPage()
   }
@@ -139,6 +328,7 @@ function checkAuth() {
 
 // ===== 페이지 표시 =====
 function showLoginPage() {
+  stopAutoLogoutTimers() // 타이머 중지
   document.getElementById('loginPage').classList.remove('hidden')
   document.getElementById('mainApp').classList.add('hidden')
 }
@@ -149,6 +339,9 @@ function showMainApp() {
   
   document.getElementById('userName').textContent = currentUser.name
   document.getElementById('userRole').textContent = currentUser.role === 'admin' ? '관리자' : '직원'
+  
+  // 자동 로그아웃 타이머 시작
+  startAutoLogoutTimers()
   
   loadStores()
   loadDashboard()

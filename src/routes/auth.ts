@@ -68,9 +68,9 @@ auth.post('/login', async (c) => {
       maxAge: 60 * 60 * 24 * 7 // 7일
     })
     
-    // 세션 DB에 저장
+    // 세션 DB에 저장 (updated_at 포함)
     await c.env.DB.prepare(
-      'INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, datetime("now", "+7 days"))'
+      'INSERT INTO sessions (user_id, token, expires_at, updated_at) VALUES (?, ?, datetime("now", "+7 days"), datetime("now"))'
     ).bind(user.id, token).run()
     
     // 활성 세션 등록 (관리자 제외)
@@ -231,6 +231,133 @@ auth.post('/change-password', async (c) => {
   } catch (error) {
     console.error('Change password error:', error)
     return c.json(errorResponse('비밀번호 변경 중 오류가 발생했습니다.'), 500)
+  }
+})
+
+/**
+ * POST /api/auth/heartbeat
+ * 세션 활동 시간 업데이트 (15분 비활성 체크용)
+ */
+auth.post('/heartbeat', async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    
+    if (!token) {
+      return c.json(errorResponse('로그인이 필요합니다.'), 401)
+    }
+    
+    // 세션 조회 및 15분 만료 체크
+    const session = await c.env.DB.prepare(`
+      SELECT s.user_id, s.token, s.expires_at,
+             datetime('now') as current_time,
+             datetime(s.updated_at, '+15 minutes') as inactive_expires_at
+      FROM sessions s
+      WHERE s.token = ? AND s.expires_at > datetime('now')
+    `).bind(token).first()
+    
+    if (!session) {
+      return c.json(errorResponse('세션이 만료되었습니다.'), 401)
+    }
+    
+    // 15분 비활성 체크
+    const currentTime = new Date(session.current_time as string)
+    const inactiveExpiresAt = new Date(session.inactive_expires_at as string)
+    
+    if (currentTime > inactiveExpiresAt) {
+      // 15분 이상 비활성 - 세션 삭제
+      await c.env.DB.prepare('DELETE FROM sessions WHERE token = ?').bind(token).run()
+      await c.env.DB.prepare('DELETE FROM active_sessions WHERE session_token = ?').bind(token).run()
+      
+      return c.json(errorResponse('15분 이상 비활성으로 자동 로그아웃되었습니다.'), 401)
+    }
+    
+    // 활동 시간 업데이트
+    await c.env.DB.prepare(`
+      UPDATE sessions 
+      SET updated_at = datetime('now')
+      WHERE token = ?
+    `).bind(token).run()
+    
+    // 활성 세션 업데이트
+    await c.env.DB.prepare(`
+      UPDATE active_sessions 
+      SET last_activity = datetime('now')
+      WHERE session_token = ?
+    `).bind(token).run()
+    
+    return c.json(successResponse({ 
+      active: true,
+      lastActivity: new Date().toISOString()
+    }))
+    
+  } catch (error) {
+    console.error('Heartbeat error:', error)
+    return c.json(errorResponse('세션 체크 중 오류가 발생했습니다.'), 500)
+  }
+})
+
+/**
+ * GET /api/auth/session-check
+ * 세션 유효성 체크 (페이지 로드 시)
+ */
+auth.get('/session-check', async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    
+    if (!token) {
+      return c.json(errorResponse('로그인이 필요합니다.'), 401)
+    }
+    
+    // 세션 조회 및 15분 만료 체크
+    const session = await c.env.DB.prepare(`
+      SELECT s.user_id, s.token, s.expires_at, s.updated_at,
+             u.username, u.name, u.role,
+             datetime('now') as current_time,
+             datetime(s.updated_at, '+15 minutes') as inactive_expires_at
+      FROM sessions s
+      INNER JOIN users u ON s.user_id = u.id
+      WHERE s.token = ? AND s.expires_at > datetime('now')
+    `).bind(token).first()
+    
+    if (!session) {
+      return c.json(errorResponse('세션이 만료되었습니다.'), 401)
+    }
+    
+    // 15분 비활성 체크
+    const currentTime = new Date(session.current_time as string)
+    const inactiveExpiresAt = new Date(session.inactive_expires_at as string)
+    
+    if (currentTime > inactiveExpiresAt) {
+      // 15분 이상 비활성 - 세션 삭제
+      await c.env.DB.prepare('DELETE FROM sessions WHERE token = ?').bind(token).run()
+      await c.env.DB.prepare('DELETE FROM active_sessions WHERE session_token = ?').bind(token).run()
+      
+      return c.json(errorResponse('15분 이상 비활성으로 자동 로그아웃되었습니다.'), 401)
+    }
+    
+    // 활동 시간 업데이트
+    await c.env.DB.prepare(`
+      UPDATE sessions 
+      SET updated_at = datetime('now')
+      WHERE token = ?
+    `).bind(token).run()
+    
+    return c.json(successResponse({
+      valid: true,
+      user: {
+        id: session.user_id,
+        username: session.username,
+        name: session.name,
+        role: session.role
+      },
+      lastActivity: session.updated_at
+    }))
+    
+  } catch (error) {
+    console.error('Session check error:', error)
+    return c.json(errorResponse('세션 체크 중 오류가 발생했습니다.'), 500)
   }
 })
 
