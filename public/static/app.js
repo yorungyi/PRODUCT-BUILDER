@@ -312,10 +312,6 @@ function stopAutoLogoutTimers() {
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   window.removeEventListener('beforeunload', handleBeforeUnload)
 }
-  
-  document.removeEventListener('visibilitychange', handleVisibilityChange)
-  window.removeEventListener('beforeunload', handleBeforeUnload)
-}
 
 /**
  * 페이지 가시성 변경 처리
