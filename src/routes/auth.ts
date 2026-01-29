@@ -13,7 +13,7 @@ const auth = new Hono<{ Bindings: Bindings }>()
 
 /**
  * POST /api/auth/login
- * 로그인 - 사용자 인증 및 JWT 발급
+ * 로그인 - 사용자 인증 및 JWT 발급 (동시 접속 제어 포함)
  */
 auth.post('/login', async (c) => {
   try {
@@ -39,6 +39,20 @@ auth.post('/login', async (c) => {
       return c.json(errorResponse('아이디 또는 비밀번호가 올바르지 않습니다.'), 401)
     }
     
+    // 동시 접속 체크 (관리자만 제외)
+    if (user.role !== 'admin') {
+      const activeSession = await c.env.DB.prepare(
+        'SELECT id, username, login_at FROM active_sessions WHERE user_id = ?'
+      ).bind(user.id).first()
+      
+      if (activeSession) {
+        return c.json(errorResponse(
+          `다른 기기에서 이미 로그인되어 있습니다. (로그인 시각: ${activeSession.login_at})\n` +
+          '동시 접속이 불가능합니다. 다른 세션을 먼저 로그아웃해주세요.'
+        ), 409)
+      }
+    }
+    
     // JWT 토큰 생성
     const token = await generateToken(
       user.id as number,
@@ -59,6 +73,19 @@ auth.post('/login', async (c) => {
       'INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, datetime("now", "+7 days"))'
     ).bind(user.id, token).run()
     
+    // 활성 세션 등록 (관리자 제외)
+    if (user.role !== 'admin') {
+      // 기존 세션 삭제 (혹시 남아있을 경우)
+      await c.env.DB.prepare(
+        'DELETE FROM active_sessions WHERE user_id = ?'
+      ).bind(user.id).run()
+      
+      // 새 세션 등록
+      await c.env.DB.prepare(
+        'INSERT INTO active_sessions (user_id, username, session_token) VALUES (?, ?, ?)'
+      ).bind(user.id, user.username, token).run()
+    }
+    
     return c.json(successResponse({
       token,
       user: {
@@ -77,7 +104,7 @@ auth.post('/login', async (c) => {
 
 /**
  * POST /api/auth/logout
- * 로그아웃 - 세션 삭제
+ * 로그아웃 - 세션 삭제 및 활성 세션 해제
  */
 auth.post('/logout', async (c) => {
   try {
@@ -88,6 +115,11 @@ auth.post('/logout', async (c) => {
       // 세션 DB에서 삭제
       await c.env.DB.prepare(
         'DELETE FROM sessions WHERE token = ?'
+      ).bind(token).run()
+      
+      // 활성 세션에서도 삭제
+      await c.env.DB.prepare(
+        'DELETE FROM active_sessions WHERE session_token = ?'
       ).bind(token).run()
     }
     

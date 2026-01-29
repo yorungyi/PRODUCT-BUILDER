@@ -464,34 +464,45 @@ async function loadSalesList() {
       return
     }
     
-    // 당일 총매출 계산 (시작일==종료일이고 날짜가 선택된 경우)
+    // 필터된 결과의 총매출 계산 (항상 표시)
+    const totalAmount = sales.reduce((sum, sale) => sum + (sale.amount || 0), 0)
+    const netAmount = Math.round(totalAmount / 1.1) // 순매출 (부가세 제외)
+    const vatAmount = totalAmount - netAmount // 부가세
+    
+    // 기간이 하루인 경우 "당일 총매출" 박스 표시
     if (startDate && endDate && startDate === endDate) {
-      const totalAmount = sales.reduce((sum, sale) => sum + (sale.amount || 0), 0)
-      const netAmount = Math.round(totalAmount / 1.1) // 순매출 (부가세 제외)
-      const vatAmount = totalAmount - netAmount // 부가세
-      
       document.getElementById('dailyTotalAmount').textContent = formatCurrency(totalAmount)
       document.getElementById('dailyNetAmount').textContent = formatCurrency(netAmount)
       document.getElementById('dailyVatAmount').textContent = formatCurrency(vatAmount)
       document.getElementById('dailyTotalBox').classList.remove('hidden')
-    } else {
-      document.getElementById('dailyTotalBox').classList.add('hidden')
-    }
-    
-    // 당월 총매출 계산 (시작일이 이번 달 1일인 경우)
-    const now = new Date()
-    const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
-    if (startDate === currentMonthStart || (!startDate && !endDate)) {
-      const totalAmount = sales.reduce((sum, sale) => sum + (sale.amount || 0), 0)
-      const netAmount = Math.round(totalAmount / 1.1)
-      const vatAmount = totalAmount - netAmount
-      
-      document.getElementById('listMonthlyTotalAmount').textContent = formatCurrency(totalAmount)
-      document.getElementById('listMonthlyNetAmount').textContent = formatCurrency(netAmount)
-      document.getElementById('listMonthlyVatAmount').textContent = formatCurrency(vatAmount)
-      document.getElementById('monthlyTotalBox').classList.remove('hidden')
-    } else {
       document.getElementById('monthlyTotalBox').classList.add('hidden')
+    } 
+    // 당월 조회인 경우 "당월 총매출" 박스 표시
+    else {
+      const now = new Date()
+      const currentMonthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`
+      const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      const currentMonthEndStr = `${currentMonthEnd.getFullYear()}-${String(currentMonthEnd.getMonth() + 1).padStart(2, '0')}-${String(currentMonthEnd.getDate()).padStart(2, '0')}`
+      
+      // 당월 조회 조건: 시작일이 이번 달 1일이고 종료일이 이번 달 마지막 날 이내
+      const isCurrentMonth = (startDate === currentMonthStart || !startDate) && 
+                             (!endDate || endDate <= currentMonthEndStr)
+      
+      if (isCurrentMonth) {
+        document.getElementById('listMonthlyTotalAmount').textContent = formatCurrency(totalAmount)
+        document.getElementById('listMonthlyNetAmount').textContent = formatCurrency(netAmount)
+        document.getElementById('listMonthlyVatAmount').textContent = formatCurrency(vatAmount)
+        document.getElementById('monthlyTotalBox').classList.remove('hidden')
+        document.getElementById('dailyTotalBox').classList.add('hidden')
+      } 
+      // 그 외 모든 경우: 기간별 총매출 박스 표시 (monthlyTotalBox 재사용)
+      else {
+        document.getElementById('listMonthlyTotalAmount').textContent = formatCurrency(totalAmount)
+        document.getElementById('listMonthlyNetAmount').textContent = formatCurrency(netAmount)
+        document.getElementById('listMonthlyVatAmount').textContent = formatCurrency(vatAmount)
+        document.getElementById('monthlyTotalBox').classList.remove('hidden')
+        document.getElementById('dailyTotalBox').classList.add('hidden')
+      }
     }
     
     sales.forEach(sale => {
@@ -545,6 +556,26 @@ async function loadSalesList() {
       
       tbody.appendChild(row)
     })
+    
+    // 필터 조회된 총 매출액 표시 (테이블 하단)
+    const filterTotal = sales.reduce((sum, sale) => sum + (sale.amount || 0), 0)
+    const filterNet = Math.round(filterTotal / 1.1)
+    const filterVat = filterTotal - filterNet
+    
+    const totalRow = document.createElement('tr')
+    totalRow.className = 'bg-gray-100 font-bold border-t-2 border-gray-300'
+    totalRow.innerHTML = `
+      <td class="px-4 py-4" colspan="3">
+        <i class="fas fa-calculator mr-2"></i>조회된 총 매출액 (${sales.length}건)
+      </td>
+      <td class="px-4 py-4 text-right text-lg text-blue-600">${formatCurrency(filterTotal)}</td>
+      <td class="px-4 py-4 text-sm text-gray-600" colspan="4">
+        순매출 <span class="font-semibold">${formatCurrency(filterNet)}</span> + 
+        부가세 <span class="font-semibold">${formatCurrency(filterVat)}</span>
+      </td>
+    `
+    tbody.appendChild(totalRow)
+    
   } catch (error) {
     showAlert('매출 내역을 불러올 수 없습니다.', 'error')
   } finally {
