@@ -1,7 +1,7 @@
 // 인증 관련 API 라우트
 import { Hono } from 'hono'
 import { setCookie } from 'hono/cookie'
-import { verifyPassword } from '../utils/password'
+import { verifyPassword, hashPassword } from '../utils/password'
 import { generateToken } from '../utils/jwt'
 import { successResponse, errorResponse } from '../utils/response'
 
@@ -139,6 +139,66 @@ auth.get('/me', async (c) => {
   } catch (error) {
     console.error('Get user error:', error)
     return c.json(errorResponse('사용자 정보 조회 중 오류가 발생했습니다.'), 500)
+  }
+})
+
+/**
+ * POST /api/auth/change-password
+ * 비밀번호 변경
+ */
+auth.post('/change-password', async (c) => {
+  try {
+    const authHeader = c.req.header('Authorization')
+    const token = authHeader?.replace('Bearer ', '')
+    
+    if (!token) {
+      return c.json(errorResponse('로그인이 필요합니다.'), 401)
+    }
+    
+    const { currentPassword, newPassword } = await c.req.json()
+    
+    if (!currentPassword || !newPassword) {
+      return c.json(errorResponse('현재 비밀번호와 새 비밀번호를 입력해주세요.'), 400)
+    }
+    
+    if (newPassword.length < 4) {
+      return c.json(errorResponse('새 비밀번호는 최소 4자 이상이어야 합니다.'), 400)
+    }
+    
+    // 세션에서 사용자 ID 조회
+    const session = await c.env.DB.prepare(`
+      SELECT u.id, u.password
+      FROM sessions s
+      INNER JOIN users u ON s.user_id = u.id
+      WHERE s.token = ? AND s.expires_at > datetime('now')
+    `).bind(token).first()
+    
+    if (!session) {
+      return c.json(errorResponse('유효하지 않은 세션입니다.'), 401)
+    }
+    
+    // 현재 비밀번호 확인
+    const isValid = await verifyPassword(currentPassword, session.password as string)
+    
+    if (!isValid) {
+      return c.json(errorResponse('현재 비밀번호가 올바르지 않습니다.'), 401)
+    }
+    
+    // 새 비밀번호 해시화
+    const hashedPassword = await hashPassword(newPassword)
+    
+    // 비밀번호 업데이트
+    await c.env.DB.prepare(`
+      UPDATE users 
+      SET password = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).bind(hashedPassword, session.id).run()
+    
+    return c.json(successResponse(null, '비밀번호가 변경되었습니다.'))
+    
+  } catch (error) {
+    console.error('Change password error:', error)
+    return c.json(errorResponse('비밀번호 변경 중 오류가 발생했습니다.'), 500)
   }
 })
 

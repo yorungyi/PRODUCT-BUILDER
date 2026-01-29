@@ -92,7 +92,7 @@ app.get('/', (c) => {
                 </button>
             </form>
             <div class="mt-4 text-sm text-gray-600 text-center">
-                <p>관리자: admin / staff: staff1</p>
+                <p>관리자: admin / 직원: staff</p>
                 <p class="text-xs">(개발용 계정)</p>
             </div>
         </div>
@@ -113,6 +113,9 @@ app.get('/', (c) => {
                 <div class="flex items-center space-x-4">
                     <span id="userName" class="text-sm text-gray-700"></span>
                     <span id="userRole" class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded"></span>
+                    <button id="changePasswordBtn" class="text-sm text-gray-600 hover:text-gray-800">
+                        <i class="fas fa-key mr-1"></i>비밀번호 변경
+                    </button>
                     <button id="logoutBtn" class="text-sm text-red-600 hover:text-red-800">
                         <i class="fas fa-sign-out-alt mr-1"></i>로그아웃
                     </button>
@@ -225,10 +228,38 @@ app.get('/', (c) => {
                             </select>
                         </div>
                         <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">날씨 *</label>
+                            <select id="weather" required
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                                <option value="맑음">☀️ 맑음</option>
+                                <option value="흐림">☁️ 흐림</option>
+                                <option value="비">🌧️ 비</option>
+                                <option value="눈">❄️ 눈</option>
+                                <option value="휴장">🚫 휴장</option>
+                            </select>
+                        </div>
+                        <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">매출액 (원) *</label>
-                            <input type="number" id="amount" required min="0" step="1000"
-                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                                placeholder="예: 1250000">
+                            <input type="text" id="amount" required readonly
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 bg-gray-50 text-right text-xl font-mono"
+                                placeholder="0원">
+                            <!-- 숫자 키패드 -->
+                            <div class="grid grid-cols-3 gap-2 mt-3">
+                                <button type="button" class="numpad-btn bg-gray-100 hover:bg-gray-200 py-4 rounded-lg text-xl font-bold" data-value="1">1</button>
+                                <button type="button" class="numpad-btn bg-gray-100 hover:bg-gray-200 py-4 rounded-lg text-xl font-bold" data-value="2">2</button>
+                                <button type="button" class="numpad-btn bg-gray-100 hover:bg-gray-200 py-4 rounded-lg text-xl font-bold" data-value="3">3</button>
+                                <button type="button" class="numpad-btn bg-gray-100 hover:bg-gray-200 py-4 rounded-lg text-xl font-bold" data-value="4">4</button>
+                                <button type="button" class="numpad-btn bg-gray-100 hover:bg-gray-200 py-4 rounded-lg text-xl font-bold" data-value="5">5</button>
+                                <button type="button" class="numpad-btn bg-gray-100 hover:bg-gray-200 py-4 rounded-lg text-xl font-bold" data-value="6">6</button>
+                                <button type="button" class="numpad-btn bg-gray-100 hover:bg-gray-200 py-4 rounded-lg text-xl font-bold" data-value="7">7</button>
+                                <button type="button" class="numpad-btn bg-gray-100 hover:bg-gray-200 py-4 rounded-lg text-xl font-bold" data-value="8">8</button>
+                                <button type="button" class="numpad-btn bg-gray-100 hover:bg-gray-200 py-4 rounded-lg text-xl font-bold" data-value="9">9</button>
+                                <button type="button" class="numpad-btn bg-gray-100 hover:bg-gray-200 py-4 rounded-lg text-xl font-bold" data-value="000">000</button>
+                                <button type="button" class="numpad-btn bg-gray-100 hover:bg-gray-200 py-4 rounded-lg text-xl font-bold" data-value="0">0</button>
+                                <button type="button" class="numpad-clear bg-red-100 hover:bg-red-200 py-4 rounded-lg text-xl font-bold text-red-600">
+                                    <i class="fas fa-backspace"></i>
+                                </button>
+                            </div>
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">메모</label>
@@ -271,12 +302,26 @@ app.get('/', (c) => {
                             </button>
                         </div>
                     </div>
+                    <!-- 당일 총매출 표시 -->
+                    <div id="dailyTotalBox" class="mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 hidden">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-bold text-gray-700">당일 총매출</h3>
+                            <div class="text-right">
+                                <p class="text-3xl font-bold text-blue-600" id="dailyTotalAmount">0원</p>
+                                <p class="text-sm text-gray-600 mt-1">
+                                    순매출 <span id="dailyNetAmount" class="font-semibold">0원</span> + 
+                                    부가세 <span id="dailyVatAmount" class="font-semibold">0원</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-sm">
                             <thead class="bg-gray-50">
                                 <tr>
                                     <th class="px-4 py-3 text-left">날짜</th>
                                     <th class="px-4 py-3 text-left">점포</th>
+                                    <th class="px-4 py-3 text-center">날씨</th>
                                     <th class="px-4 py-3 text-right">매출액</th>
                                     <th class="px-4 py-3 text-left">메모</th>
                                     <th class="px-4 py-3 text-center">상태</th>
@@ -292,6 +337,40 @@ app.get('/', (c) => {
                 </div>
             </div>
         </main>
+    </div>
+
+    <!-- 비밀번호 변경 모달 -->
+    <div id="changePasswordModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-8 rounded-lg shadow-xl w-96">
+            <h3 class="text-xl font-bold text-gray-800 mb-6">
+                <i class="fas fa-key mr-2"></i>비밀번호 변경
+            </h3>
+            <form id="changePasswordForm" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">현재 비밀번호</label>
+                    <input type="password" id="currentPassword" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">새 비밀번호 (최소 4자)</label>
+                    <input type="password" id="newPassword" required minlength="4"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">새 비밀번호 확인</label>
+                    <input type="password" id="confirmPassword" required minlength="4"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div class="flex space-x-4 mt-6">
+                    <button type="submit" class="flex-1 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700">
+                        변경하기
+                    </button>
+                    <button type="button" id="cancelPasswordChange" class="px-6 bg-gray-300 text-gray-700 py-2 rounded-lg hover:bg-gray-400">
+                        취소
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <script src="/static/app.js"></script>

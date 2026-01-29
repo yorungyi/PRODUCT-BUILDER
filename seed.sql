@@ -2,7 +2,7 @@
 
 -- 테스트 직원 계정 추가 (비밀번호: staff1234)
 INSERT OR IGNORE INTO users (username, password, name, role) VALUES 
-  ('staff1', '$2b$10$TWXbM7Z53vbbVwjfZEoT9.MHCreeQaX.JGSQhVpHyIrezFpLaCdM.', '김직원', 'staff'),
+  ('staff', '$2b$10$TWXbM7Z53vbbVwjfZEoT9.MHCreeQaX.JGSQhVpHyIrezFpLaCdM.', '직원', 'staff'),
   ('staff2', '$2b$10$TWXbM7Z53vbbVwjfZEoT9.MHCreeQaX.JGSQhVpHyIrezFpLaCdM.', '이매니저', 'staff');
 
 -- 최근 7일 테스트 매출 데이터 (각 점포별)

@@ -29,6 +29,7 @@ sales.get('/', async (c) => {
         s.code as store_code,
         ds.amount,
         ds.memo,
+        ds.weather,
         ds.is_closed,
         ds.closed_at,
         u_closed.name as closed_by_name,
@@ -93,6 +94,7 @@ sales.get('/:id', async (c) => {
         s.code as store_code,
         ds.amount,
         ds.memo,
+        ds.weather,
         ds.is_closed,
         ds.closed_at,
         u_closed.name as closed_by_name,
@@ -125,7 +127,7 @@ sales.get('/:id', async (c) => {
 sales.post('/', async (c) => {
   try {
     const user = c.get('user')
-    const { saleDate, storeId, amount, memo } = await c.req.json()
+    const { saleDate, storeId, amount, memo, weather } = await c.req.json()
     
     // 입력 검증
     if (!saleDate || !storeId || amount === undefined) {
@@ -140,6 +142,12 @@ sales.post('/', async (c) => {
       return c.json(errorResponse('올바른 금액을 입력해주세요. (0 ~ 100,000,000)'), 400)
     }
     
+    // 날씨 검증
+    const validWeather = ['맑음', '흐림', '비', '눈', '휴장']
+    if (weather && !validWeather.includes(weather)) {
+      return c.json(errorResponse('올바른 날씨를 선택해주세요.'), 400)
+    }
+    
     // 중복 체크 (같은 날짜, 같은 점포)
     const existing = await c.env.DB.prepare(
       'SELECT id FROM daily_sales WHERE sale_date = ? AND store_id = ?'
@@ -151,16 +159,17 @@ sales.post('/', async (c) => {
     
     // 매출 등록
     const result = await c.env.DB.prepare(`
-      INSERT INTO daily_sales (sale_date, store_id, amount, memo, created_by)
-      VALUES (?, ?, ?, ?, ?)
-    `).bind(saleDate, storeId, amount, memo || '', user.userId).run()
+      INSERT INTO daily_sales (sale_date, store_id, amount, memo, weather, created_by)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(saleDate, storeId, amount, memo || '', weather || '맑음', user.userId).run()
     
     return c.json(successResponse({
       id: result.meta.last_row_id,
       saleDate,
       storeId,
       amount,
-      memo
+      memo,
+      weather: weather || '맑음'
     }, '매출이 등록되었습니다.'), 201)
     
   } catch (error) {
@@ -176,7 +185,7 @@ sales.post('/', async (c) => {
 sales.put('/:id', async (c) => {
   try {
     const id = parseInt(c.req.param('id'))
-    const { amount, memo } = await c.req.json()
+    const { amount, memo, weather } = await c.req.json()
     
     // 매출 조회
     const sale = await c.env.DB.prepare(
@@ -197,14 +206,20 @@ sales.put('/:id', async (c) => {
       return c.json(errorResponse('올바른 금액을 입력해주세요.'), 400)
     }
     
+    // 날씨 검증
+    const validWeather = ['맑음', '흐림', '비', '눈', '휴장']
+    if (weather && !validWeather.includes(weather)) {
+      return c.json(errorResponse('올바른 날씨를 선택해주세요.'), 400)
+    }
+    
     // 매출 수정
     await c.env.DB.prepare(`
       UPDATE daily_sales 
-      SET amount = ?, memo = ?, updated_at = datetime('now')
+      SET amount = ?, memo = ?, weather = ?, updated_at = datetime('now')
       WHERE id = ?
-    `).bind(amount, memo || '', id).run()
+    `).bind(amount, memo || '', weather || '맑음', id).run()
     
-    return c.json(successResponse({ id, amount, memo }, '매출이 수정되었습니다.'))
+    return c.json(successResponse({ id, amount, memo, weather }, '매출이 수정되었습니다.'))
     
   } catch (error) {
     console.error('Update sale error:', error)

@@ -302,16 +302,23 @@ function updateTrendChart(trendData) {
 }
 
 // ===== 매출 등록 =====
-async function registerSales(saleDate, storeId, amount, memo) {
+async function registerSales(saleDate, storeId, amount, memo, weather) {
   showLoading()
   try {
     await apiCall('/sales', {
       method: 'POST',
-      body: JSON.stringify({ saleDate, storeId: parseInt(storeId), amount: parseFloat(amount), memo })
+      body: JSON.stringify({ 
+        saleDate, 
+        storeId: parseInt(storeId), 
+        amount: parseFloat(amount), 
+        memo,
+        weather 
+      })
     })
     
     showAlert('매출이 등록되었습니다.', 'success')
     document.getElementById('salesForm').reset()
+    document.getElementById('amount').value = ''
     
     // 대시보드 새로고침
     if (document.getElementById('dashboardTab').classList.contains('hidden') === false) {
@@ -346,13 +353,38 @@ async function loadSalesList() {
     tbody.innerHTML = ''
     
     if (sales.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-4 text-gray-500">매출 내역이 없습니다.</td></tr>'
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-gray-500">매출 내역이 없습니다.</td></tr>'
+      document.getElementById('dailyTotalBox').classList.add('hidden')
       return
+    }
+    
+    // 당일 총매출 계산 (시작일==종료일이고 날짜가 선택된 경우)
+    if (startDate && endDate && startDate === endDate) {
+      const totalAmount = sales.reduce((sum, sale) => sum + (sale.amount || 0), 0)
+      const netAmount = Math.round(totalAmount / 1.1) // 순매출 (부가세 제외)
+      const vatAmount = totalAmount - netAmount // 부가세
+      
+      document.getElementById('dailyTotalAmount').textContent = formatCurrency(totalAmount)
+      document.getElementById('dailyNetAmount').textContent = formatCurrency(netAmount)
+      document.getElementById('dailyVatAmount').textContent = formatCurrency(vatAmount)
+      document.getElementById('dailyTotalBox').classList.remove('hidden')
+    } else {
+      document.getElementById('dailyTotalBox').classList.add('hidden')
     }
     
     sales.forEach(sale => {
       const row = document.createElement('tr')
       row.className = 'hover:bg-gray-50'
+      
+      // 날씨 아이콘
+      const weatherIcons = {
+        '맑음': '☀️',
+        '흐림': '☁️',
+        '비': '🌧️',
+        '눈': '❄️',
+        '휴장': '🚫'
+      }
+      const weatherIcon = weatherIcons[sale.weather] || '☀️'
       
       const closedBadge = sale.is_closed 
         ? '<span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded">마감완료</span>'
@@ -381,6 +413,7 @@ async function loadSalesList() {
       row.innerHTML = `
         <td class="px-4 py-3">${formatDate(sale.sale_date)}</td>
         <td class="px-4 py-3">${sale.store_name}</td>
+        <td class="px-4 py-3 text-center text-xl">${weatherIcon}</td>
         <td class="px-4 py-3 text-right font-medium">${formatCurrency(sale.amount)}</td>
         <td class="px-4 py-3 text-sm text-gray-600">${sale.memo || '-'}</td>
         <td class="px-4 py-3 text-center">${closedBadge}</td>
@@ -494,6 +527,45 @@ document.addEventListener('DOMContentLoaded', () => {
   // 로그아웃
   document.getElementById('logoutBtn').addEventListener('click', logout)
   
+  // 비밀번호 변경 버튼
+  document.getElementById('changePasswordBtn').addEventListener('click', () => {
+    document.getElementById('changePasswordModal').classList.remove('hidden')
+  })
+  
+  // 비밀번호 변경 취소
+  document.getElementById('cancelPasswordChange').addEventListener('click', () => {
+    document.getElementById('changePasswordModal').classList.add('hidden')
+    document.getElementById('changePasswordForm').reset()
+  })
+  
+  // 비밀번호 변경 폼
+  document.getElementById('changePasswordForm').addEventListener('submit', async (e) => {
+    e.preventDefault()
+    const currentPassword = document.getElementById('currentPassword').value
+    const newPassword = document.getElementById('newPassword').value
+    const confirmPassword = document.getElementById('confirmPassword').value
+    
+    if (newPassword !== confirmPassword) {
+      showAlert('새 비밀번호가 일치하지 않습니다.', 'error')
+      return
+    }
+    
+    showLoading()
+    try {
+      await apiCall('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({ currentPassword, newPassword })
+      })
+      showAlert('비밀번호가 변경되었습니다.', 'success')
+      document.getElementById('changePasswordModal').classList.add('hidden')
+      document.getElementById('changePasswordForm').reset()
+    } catch (error) {
+      showAlert(error.message, 'error')
+    } finally {
+      hideLoading()
+    }
+  })
+  
   // 탭 전환
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -501,14 +573,44 @@ document.addEventListener('DOMContentLoaded', () => {
     })
   })
   
+  // 숫자 키패드
+  let currentAmount = ''
+  document.querySelectorAll('.numpad-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const value = btn.dataset.value
+      currentAmount += value
+      document.getElementById('amount').value = parseInt(currentAmount || '0').toLocaleString() + '원'
+    })
+  })
+  
+  // 숫자 키패드 지우기
+  document.querySelector('.numpad-clear').addEventListener('click', () => {
+    currentAmount = currentAmount.slice(0, -1)
+    document.getElementById('amount').value = parseInt(currentAmount || '0').toLocaleString() + '원'
+  })
+  
   // 매출 등록 폼
   document.getElementById('salesForm').addEventListener('submit', (e) => {
     e.preventDefault()
     const saleDate = document.getElementById('saleDate').value
     const storeId = document.getElementById('storeSelect').value
-    const amount = document.getElementById('amount').value
+    const amount = currentAmount
     const memo = document.getElementById('memo').value
-    registerSales(saleDate, storeId, amount, memo)
+    const weather = document.getElementById('weather').value
+    
+    if (!amount || amount === '0') {
+      showAlert('매출액을 입력해주세요.', 'error')
+      return
+    }
+    
+    registerSales(saleDate, storeId, amount, memo, weather)
+    currentAmount = ''
+  })
+  
+  // 폼 리셋 시 키패드 초기화
+  document.getElementById('salesForm').addEventListener('reset', () => {
+    currentAmount = ''
+    document.getElementById('amount').value = ''
   })
   
   // 대시보드 기간 조회
