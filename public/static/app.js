@@ -9,6 +9,8 @@ let trendChart = null
 // 자동 로그아웃 관련 변수
 let heartbeatInterval = null // heartbeat 타이머
 let activityTimeout = null // 비활성 타이머
+let countdownInterval = null // 카운트다운 UI 업데이트 타이머
+let logoutTime = null // 로그아웃 예정 시각
 const INACTIVITY_TIMEOUT = 15 * 60 * 1000 // 15분 (밀리초)
 const HEARTBEAT_INTERVAL = 60 * 1000 // 1분마다 heartbeat (밀리초)
 
@@ -164,6 +166,9 @@ function resetInactivityTimer() {
     clearTimeout(activityTimeout)
   }
   
+  // 로그아웃 예정 시각 업데이트
+  logoutTime = Date.now() + INACTIVITY_TIMEOUT
+  
   // 새 타이머 설정 (15분)
   activityTimeout = setTimeout(() => {
     handleAutoLogout('15분 이상 비활성으로 자동 로그아웃됩니다.')
@@ -176,6 +181,47 @@ function resetInactivityTimer() {
     setTimeout(() => {
       window.lastHeartbeatTime = null
     }, 60000) // 1분 후 다시 전송 가능
+  }
+}
+
+/**
+ * 카운트다운 타이머 UI 업데이트
+ * 1초마다 남은 시간 표시
+ */
+function updateCountdownTimer() {
+  const timerElement = document.getElementById('timerText')
+  if (!timerElement || !logoutTime) return
+  
+  const now = Date.now()
+  const remaining = Math.max(0, logoutTime - now)
+  
+  // 분과 초 계산
+  const minutes = Math.floor(remaining / 60000)
+  const seconds = Math.floor((remaining % 60000) / 1000)
+  
+  // MM:SS 형식으로 표시
+  const timerText = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  timerElement.textContent = timerText
+  
+  // 3분 이하일 때 빨간색으로 변경
+  const timerContainer = document.getElementById('logoutTimer')
+  if (remaining <= 3 * 60 * 1000) {
+    timerContainer.classList.remove('text-gray-600')
+    timerContainer.classList.add('text-red-600', 'font-bold')
+  } else {
+    timerContainer.classList.remove('text-red-600', 'font-bold')
+    timerContainer.classList.add('text-gray-600')
+  }
+  
+  // 1분 이하일 때 경고 알림 (1번만)
+  if (remaining <= 60 * 1000 && remaining > 59 * 1000 && !window.warningShown) {
+    showAlert('1분 후 자동 로그아웃됩니다. 활동하시면 시간이 연장됩니다.', 'error')
+    window.warningShown = true
+  }
+  
+  // 0이 되면 경고 플래그 리셋
+  if (remaining === 0) {
+    window.warningShown = false
   }
 }
 
@@ -202,6 +248,10 @@ function startAutoLogoutTimers() {
   // 기존 타이머 정리
   stopAutoLogoutTimers()
   
+  // 로그아웃 예정 시각 초기화
+  logoutTime = Date.now() + INACTIVITY_TIMEOUT
+  window.warningShown = false
+  
   // 1. Heartbeat 타이머 (1분마다)
   heartbeatInterval = setInterval(() => {
     sendHeartbeat()
@@ -210,17 +260,25 @@ function startAutoLogoutTimers() {
   // 2. 비활성 타이머 (15분)
   resetInactivityTimer()
   
-  // 3. 사용자 활동 이벤트 리스너 등록
+  // 3. 카운트다운 UI 업데이트 타이머 (1초마다)
+  countdownInterval = setInterval(() => {
+    updateCountdownTimer()
+  }, 1000)
+  
+  // 4. 사용자 활동 이벤트 리스너 등록
   const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click']
   activityEvents.forEach(event => {
     document.addEventListener(event, resetInactivityTimer, { passive: true })
   })
   
-  // 4. 페이지 가시성 변경 감지 (탭 전환, 창 최소화 등)
+  // 5. 페이지 가시성 변경 감지 (탭 전환, 창 최소화 등)
   document.addEventListener('visibilitychange', handleVisibilityChange)
   
-  // 5. 페이지 언로드 감지 (창 닫기, 새로고침 등)
+  // 6. 페이지 언로드 감지 (창 닫기, 새로고침 등)
   window.addEventListener('beforeunload', handleBeforeUnload)
+  
+  // 타이머 즉시 표시
+  updateCountdownTimer()
 }
 
 /**
@@ -237,11 +295,23 @@ function stopAutoLogoutTimers() {
     activityTimeout = null
   }
   
+  if (countdownInterval) {
+    clearInterval(countdownInterval)
+    countdownInterval = null
+  }
+  
+  // 로그아웃 시각 초기화
+  logoutTime = null
+  
   // 이벤트 리스너 제거
   const activityEvents = ['mousedown', 'keydown', 'scroll', 'touchstart', 'click']
   activityEvents.forEach(event => {
     document.removeEventListener(event, resetInactivityTimer)
   })
+  
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+}
   
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   window.removeEventListener('beforeunload', handleBeforeUnload)
@@ -282,26 +352,22 @@ async function checkAuth() {
   const user = localStorage.getItem('currentUser')
   const lastActiveTime = localStorage.getItem('lastActiveTime')
   
+  // 웹 창을 닫았다가 다시 열었을 때: 무조건 로그아웃 (관리자 포함)
+  if (lastActiveTime) {
+    // lastActiveTime이 존재하면 이전에 창을 닫았다는 의미
+    showAlert('보안을 위해 다시 로그인해주세요.', 'info')
+    authToken = null
+    currentUser = null
+    localStorage.removeItem('authToken')
+    localStorage.removeItem('currentUser')
+    localStorage.removeItem('lastActiveTime')
+    showLoginPage()
+    return
+  }
+  
   if (token && user) {
     authToken = token
     currentUser = JSON.parse(user)
-    
-    // 마지막 활동 시간 체크 (웹 창을 닫았다 다시 열었을 때)
-    if (lastActiveTime) {
-      const timeSinceLastActive = Date.now() - parseInt(lastActiveTime)
-      
-      // 15분(900,000ms) 이상 지났으면 자동 로그아웃
-      if (timeSinceLastActive > INACTIVITY_TIMEOUT) {
-        showAlert('15분 이상 비활성으로 자동 로그아웃되었습니다.', 'error')
-        authToken = null
-        currentUser = null
-        localStorage.removeItem('authToken')
-        localStorage.removeItem('currentUser')
-        localStorage.removeItem('lastActiveTime')
-        showLoginPage()
-        return
-      }
-    }
     
     // 서버 세션 체크
     try {

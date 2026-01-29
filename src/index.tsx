@@ -113,6 +113,11 @@ app.get('/', (c) => {
                 <div class="flex items-center space-x-4">
                     <span id="userName" class="text-sm text-gray-700"></span>
                     <span id="userRole" class="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded"></span>
+                    <!-- 자동 로그아웃 카운트다운 타이머 -->
+                    <div id="logoutTimer" class="flex items-center space-x-2 text-xs text-gray-600">
+                        <i class="fas fa-clock"></i>
+                        <span id="timerText">15:00</span>
+                    </div>
                     <button id="changePasswordBtn" class="text-sm text-gray-600 hover:text-gray-800">
                         <i class="fas fa-key mr-1"></i>비밀번호 변경
                     </button>

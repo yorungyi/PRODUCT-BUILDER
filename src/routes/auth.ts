@@ -73,18 +73,16 @@ auth.post('/login', async (c) => {
       'INSERT INTO sessions (user_id, token, expires_at, updated_at) VALUES (?, ?, datetime("now", "+7 days"), datetime("now"))'
     ).bind(user.id, token).run()
     
-    // 활성 세션 등록 (관리자 제외)
-    if (user.role !== 'admin') {
-      // 기존 세션 삭제 (혹시 남아있을 경우)
-      await c.env.DB.prepare(
-        'DELETE FROM active_sessions WHERE user_id = ?'
-      ).bind(user.id).run()
-      
-      // 새 세션 등록
-      await c.env.DB.prepare(
-        'INSERT INTO active_sessions (user_id, username, session_token) VALUES (?, ?, ?)'
-      ).bind(user.id, user.username, token).run()
-    }
+    // 활성 세션 등록 (모든 사용자)
+    // 기존 세션 삭제 (혹시 남아있을 경우)
+    await c.env.DB.prepare(
+      'DELETE FROM active_sessions WHERE user_id = ?'
+    ).bind(user.id).run()
+    
+    // 새 세션 등록
+    await c.env.DB.prepare(
+      'INSERT INTO active_sessions (user_id, username, session_token) VALUES (?, ?, ?)'
+    ).bind(user.id, user.username, token).run()
     
     return c.json(successResponse({
       token,
